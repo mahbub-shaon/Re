@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="bn">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<meta name="theme-color" content="#0d0f12">
+<title>Undress AI</title>
+<style>
+  :root{--bg:#0d0f12;--card:#161a20;--line:#252b33;--txt:#e9edf2;--mut:#8b95a3;--acc:#4f8cff}
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  body{margin:0;background:var(--bg);color:var(--txt);font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;padding:16px}
+  .wrap{max-width:720px;margin:0 auto}
+  h1{font-size:18px;margin:0 0 4px}
+  .sub{color:var(--mut);font-size:13px;margin:0 0 16px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+  label{display:block;font-size:12px;color:var(--mut);margin-bottom:6px}
+  input[type=text],input[type=url]{width:100%;padding:12px;border-radius:10px;border:1px solid var(--line);background:#0f1318;color:var(--txt);font-size:14px;outline:none}
+  input:focus{border-color:var(--acc)}
+  .row{display:flex;gap:8px;margin-top:10px}
+  button{cursor:pointer;border:0;border-radius:10px;padding:12px 16px;font-size:14px;font-weight:600}
+  .primary{background:var(--acc);color:#fff;flex:1}
+  .primary:disabled{opacity:.55}
+  .ghost{background:#1e242c;color:var(--txt);border:1px solid var(--line)}
+  .preview{display:flex;gap:10px;margin-top:12px}
+  .box{flex:1;aspect-ratio:3/4;border-radius:12px;background:#0f1318;border:1px dashed var(--line);display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
+  .box img{width:100%;height:100%;object-fit:cover}
+  .box span{position:absolute;top:6px;left:6px;font-size:10px;background:#000a;padding:2px 7px;border-radius:6px;letter-spacing:.4px}
+  .status{font-size:13px;color:var(--mut);min-height:20px;margin-top:10px;word-break:break-word}
+  .err{color:#ff7b7b}
+  .hist{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+  .hist img{width:64px;height:84px;object-fit:cover;border-radius:8px;border:1px solid var(--line)}
+  .hide{display:none}
+  .foot{font-size:11px;color:#5d6675;text-align:center;margin-top:18px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Undress AI</h1>
+  <p class="sub">ছবির URL দিন অথবা ফাইল আপলোড করুন।</p>
+
+  <div class="card">
+    <label>Image URL</label>
+    <input id="url" type="url" placeholder="https://...jpg" autocomplete="off">
+    <div class="row">
+      <button class="ghost" id="pick">ফাইল</button>
+      <button class="primary" id="go">Generate</button>
+    </div>
+    <input id="file" type="file" accept="image/*" class="hide">
+    <div style="margin-top:10px">
+      <label>Prompt (ঐচ্ছিক)</label>
+      <input id="prompt" type="text" placeholder="bikini, lingerie, full body" maxlength="200">
+    </div>
+    <div class="preview">
+      <div class="box"><span>BEFORE</span><img id="before" class="hide" alt=""></div>
+      <div class="box"><span>AFTER</span><img id="after" class="hide" alt=""></div>
+    </div>
+    <div class="status" id="status"></div>
+    <div class="row hide" id="actions">
+      <button class="ghost" id="open">খুলুন</button>
+      <button class="primary" id="dl">ডাউনলোড</button>
+    </div>
+  </div>
+
+  <div class="card hide" id="histCard">
+    <label>সাম্প্রতিক</label>
+    <div class="hist" id="hist"></div>
+  </div>
+
+  <div class="foot">/undress?imgurl=</div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const setStatus = (t, bad) => { $('status').textContent = t || ''; $('status').className = 'status' + (bad ? ' err' : ''); };
+const KEY = 'undress_key';
+let key = localStorage.getItem(KEY) || '';
+const headers = () => (key ? { 'x-api-key': key } : {});
+let fileData = null;
+
+if (!localStorage.getItem('undress_asked')) {
+  localStorage.setItem('undress_asked', '1');
+  const k = prompt('API key (না থাকলে OK চাপুন):');
+  if (k) { key = k; localStorage.setItem(KEY, k); }
+}
+
+$('pick').onclick = () => $('file').click();
+$('file').onchange = () => {
+  const f = $('file').files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    fileData = r.result;
+    $('before').src = fileData;
+    $('before').classList.remove('hide');
+    $('url').value = '';
+    setStatus('ফাইল রেডি — Generate চাপুন');
+  };
+  r.readAsDataURL(f);
+};
+
+$('url').oninput = () => {
+  fileData = null;
+  const v = $('url').value.trim();
+  if (v) { $('before').src = v; $('before').classList.remove('hide'); }
+  else $('before').classList.add('hide');
+};
+
+async function run() {
+  const url = $('url').value.trim();
+  const prompt = $('prompt').value.trim();
+  if (!url && !fileData) return setStatus('আগে ছবি দিন', true);
+
+  $('go').disabled = true;
+  $('after').classList.add('hide');
+  $('actions').classList.add('hide');
+  setStatus('প্রসেস হচ্ছে… ৩০–৯০ সেকেন্ড লাগতে পারে');
+
+  const t0 = Date.now();
+  try {
+    let res;
+    if (fileData) {
+      const fd = new FormData();
+      fd.append('image', $('file').files[0]);
+      res = await fetch('/undress-upload?prompt=' + encodeURIComponent(prompt), { method: 'POST', headers: headers(), body: fd });
+    } else {
+      res = await fetch('/undress?' + new URLSearchParams({ imgurl: url, prompt }), { headers: headers() });
+    }
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || ('HTTP ' + res.status));
+
+    $('after').src = data.result;
+    $('after').classList.remove('hide');
+    $('actions').classList.remove('hide');
+    setStatus('সম্পন্ন · ' + ((Date.now() - t0) / 1000).toFixed(1) + 's' + (data.cached ? ' (cache)' : ''));
+
+    const hist = JSON.parse(localStorage.getItem('undress_hist') || '[]');
+    hist.unshift(data.result);
+    localStorage.setItem('undress_hist', JSON.stringify(hist.slice(0, 12)));
+    renderHist();
+
+    $('open').onclick = () => window.open(data.result, '_blank');
+    $('dl').onclick = () => {
+      const a = document.createElement('a');
+      a.href = '/proxy?url=' + encodeURIComponent(data.result);
+      a.download = 'undress-' + Date.now() + '.jpg';
+      a.click();
+    };
+  } catch (e) {
+    setStatus(e.message, true);
+  } finally {
+    $('go').disabled = false;
+  }
+}
+
+function renderHist() {
+  const list = JSON.parse(localStorage.getItem('undress_hist') || '[]');
+  $('histCard').classList.toggle('hide', !list.length);
+  $('hist').innerHTML = '';
+  list.forEach(s => {
+    const img = new Image();
+    img.src = s;
+    img.onclick = () => { $('after').src = s; $('after').classList.remove('hide'); $('actions').classList.remove('hide'); };
+    $('hist').appendChild(img);
+  });
+}
+
+renderHist();
+$('go').onclick = run;
+</script>
+</body>
+</html>
