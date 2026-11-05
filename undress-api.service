@@ -1,0 +1,17 @@
+[Unit]
+Description=Undress API
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/undress-api
+ExecStart=/usr/bin/node src/server.js
+Restart=always
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=40
+Environment=NODE_ENV=production
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
