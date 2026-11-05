@@ -1,0 +1,20 @@
+{
+  "name": "undress-api",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "warm": "node scripts/warm.js"
+  },
+  "dependencies": {
+    "axios": "^1.7.9",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "https-proxy-agent": "^7.0.6",
+    "multer": "^2.0.1",
+    "pino": "^9.6.0"
+  }
+}
